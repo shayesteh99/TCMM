@@ -350,9 +350,10 @@ def main():
 		for t in new_trees:
 			f.write(t + '\n')
 
-	with open(args.log_file, 'w') as f:
-		for l in losses:
-			f.write('\t'.join(l) + '\n')
+	if args.log_file:
+		with open(args.log_file, 'w') as f:
+			for l in losses:
+				f.write('\t'.join(l) + '\n')
 
 	with open(args.output_file + ".rates", 'w') as f:
 		for r in all_rates:
