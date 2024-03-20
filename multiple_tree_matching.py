@@ -310,9 +310,9 @@ def main():
 	parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 	parser.add_argument('-i', '--input', required=True, help="Input tree")
 	parser.add_argument('-r', '--ref', required=True, help="Reference trees")
-	parser.add_argument('-l', '--reg_coef', default=1, required=False, help="Regularization Coefficient")
+	parser.add_argument('-l', '--reg_coef', default=0.001, required=False, help="Regularization Coefficient")
 	parser.add_argument('-o', '--output_file', required=True, help="Output file")
-	parser.add_argument('-g', '--log_file', required=True, help="Log file")
+	parser.add_argument('-g', '--log_file', required=False, help="Log file")
 
 
 	args = parser.parse_args()
@@ -346,7 +346,7 @@ def main():
 		all_rates.append([num] + rates)
 		all_bls.append([num] + bls)
 
-	with open(args.output_file, 'w') as f:
+	with open(args.output_file + ".trees", 'w') as f:
 		for t in new_trees:
 			f.write(t + '\n')
 
@@ -354,11 +354,11 @@ def main():
 		for l in losses:
 			f.write('\t'.join(l) + '\n')
 
-	with open(args.output_file.replace(".trees", ".rates"), 'w') as f:
+	with open(args.output_file + ".rates", 'w') as f:
 		for r in all_rates:
 			f.write('\t'.join(r) + '\n')
 
-	with open(args.output_file.replace(".trees", ".branches"), 'w') as f:
+	with open(args.output_file + ".branches", 'w') as f:
 		for r in all_bls:
 			f.write('\t'.join(r) + '\n')
 
