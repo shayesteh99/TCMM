@@ -138,39 +138,55 @@ def compute_A_transpose_d(tree, refTree):
 	return Atd
 
 def compute_weighted_A_transpose_d(tree, refTrees, quad_weights):
-	avg_Atd = {}
+	sum_Atd = {}
+	cnt_Atd = {}
 	for i in range(len(refTrees)):
 		refTree_obj = read_tree_newick(refTrees[i])
 		Atd = compute_A_transpose_d(tree, refTree_obj)
-		if i == 0:
-			avg_Atd = {k: Atd[k] * quad_weights[i] for k in Atd}
-		else:
-			avg_Atd = {k: avg_Atd[k] + Atd[k] * quad_weights[i] for k in avg_Atd}
-	avg_Atd = {k: avg_Atd[k]/sum(quad_weights) for k in avg_Atd}
+		for k in Atd:
+			if k not in sum_Atd:
+				sum_Atd[k] = []
+				cnt_Atd[k] = []
+			sum_Atd[k].append(Atd[k]*quad_weights[i])
+			cnt_Atd[k].append(quad_weights[i])
+
+		# if i == 0:
+		# 	avg_Atd = {k: Atd[k] * quad_weights[i] for k in Atd}
+		# else:
+		# 	avg_Atd = {k: avg_Atd[k] + Atd[k] * quad_weights[i] for k in avg_Atd}
+	avg_Atd = {k: sum(sum_Atd[k])/sum(cnt_Atd[k]) for k in sum_Atd}
 	return avg_Atd
 
 def compute_hmean_weighted_A_transpose_d(tree, refTrees, quad_weights):
-	avg_Atd = {}
+	sum_Atd = {}
+	cnt_Atd = {}
 	for i in range(len(refTrees)):
 		refTree_obj = read_tree_newick(refTrees[i])
 		Atd = compute_A_transpose_d(tree, refTree_obj)
-		if i == 0:
-			avg_Atd = {k: 1/Atd[k] * quad_weights[i] if Atd[k] != 0 else 0 for k in Atd}
-		else:
-			avg_Atd = {k: avg_Atd[k] + 1/Atd[k] * quad_weights[i] if Atd[k] != 0 else avg_Atd[k] for k in avg_Atd}
-	avg_Atd = {k: sum(quad_weights)/avg_Atd[k] if avg_Atd[k] != 0 else 0 for k in avg_Atd}
+		for k in Atd:
+			if k not in sum_Atd:
+				sum_Atd[k] = []
+				cnt_Atd[k] = []
+			if Atd[k] != 0:
+				sum_Atd[k].append(1/Atd[k]*quad_weights[i])
+				cnt_Atd[k].append(quad_weights[i])
+	avg_Atd = {k: sum(cnt_Atd[k])/sum(sum_Atd[k]) if sum(sum_Atd[k]) != 0 else 0 for k in sum_Atd}
 	return avg_Atd
 
 def compute_log_mean_weighted_A_transpose_d(tree, refTrees, quad_weights):
-	avg_Atd = {}
+	sum_Atd = {}
+	cnt_Atd = {}
 	for i in range(len(refTrees)):
 		refTree_obj = read_tree_newick(refTrees[i])
 		Atd = compute_A_transpose_d(tree, refTree_obj)
-		if i == 0:
-			avg_Atd = {k: np.log(Atd[k]) * quad_weights[i] if Atd[k] != 0 else 0 for k in Atd}
-		else:
-			avg_Atd = {k: avg_Atd[k] + np.log(Atd[k]) * quad_weights[i] if Atd[k] != 0 else avg_Atd[k] for k in avg_Atd}
-	avg_Atd = {k: np.exp(avg_Atd[k]/sum(quad_weights)) if avg_Atd[k] != 0 else 0 for k in avg_Atd}
+		for k in Atd:
+			if k not in sum_Atd:
+				sum_Atd[k] = []
+				cnt_Atd[k] = []
+			if Atd[k] != 0:
+				sum_Atd[k].append(np.log(Atd[k])*quad_weights[i])
+				cnt_Atd[k].append(quad_weights[i])
+	avg_Atd = {k: np.exp(sum(sum_Atd[k])/sum(cnt_Atd[k])) if sum(sum_Atd[k]) != 0 else 0 for k in sum_Atd}
 	return avg_Atd
 
 def compute_A_transpose_d_naive(tree, refTree):
@@ -222,7 +238,7 @@ def get_bl_weights(refTrees):
 			weights.append(1 / (sum_bls ** 2))
 	return weights
 	
-def get_matrices(tree, refTrees):
+def get_matrices(tree, refTrees, w = 0, avg = "mean"):
 	edge_to_index, index_to_edge = get_edge_indices(tree)
 	n_edges = len(edge_to_index)
 	edge_lengths = {n.label:n.edge_length for n in tree.traverse_preorder()}
@@ -234,9 +250,16 @@ def get_matrices(tree, refTrees):
 		edge_lengths[child1.label] = sum_lengths
 		del edge_lengths[child2.label]
 
-	# weights = get_weights(refTrees)
 	weights = [1 for r in refTrees]
-	Atd = compute_weighted_A_transpose_d(tree, refTrees, weights)
+	if w == 1:
+		weights = get_weights(refTrees)
+
+	if avg == "mean":
+		Atd = compute_weighted_A_transpose_d(tree, refTrees, weights)
+	elif avg == "harmonic":
+		Atd = compute_hmean_weighted_A_transpose_d(tree, refTrees, weights)
+	elif avg == "log":
+		Atd = compute_log_mean_weighted_A_transpose_d(tree, refTrees, weights)
 	AtA = compute_A_transpose_A(tree)
 	Atd_mat = np.zeros(n_edges)
 	edge_mat = np.zeros(n_edges)
@@ -256,8 +279,8 @@ def get_matrices(tree, refTrees):
 
 	return Atd_mat, AtA_mat, edge_mat, edge_to_index, index_to_edge
 
-def compute_optimal_rates(tree, refTrees, r = 1):
-	Atd, AtA, w, edge_to_index, index_to_edge = get_matrices(tree, refTrees)
+def compute_optimal_rates(tree, refTrees, r = 1, w = 0, avg = "mean"):
+	Atd, AtA, w, edge_to_index, index_to_edge = get_matrices(tree, refTrees, w, avg)
 	# let n be the number of edges
 	n = len(w)
 	# x is the optimal weight parameter (not the scale)
@@ -372,7 +395,9 @@ def main():
 	parser.add_argument('-r', '--ref', required=True, help="Reference trees")
 	parser.add_argument('-l', '--reg_coef', default=1, required=False, help="Regularization Coefficient")
 	parser.add_argument('-o', '--output_file', required=True, help="Output file")
-	parser.add_argument('-g', '--log_file', required=True, help="Log file")
+	parser.add_argument('-g', '--log_file', required=False, help="Log file")
+	parser.add_argument('-w', '--weighted', required=False, help="If the reference trees are weighted", default='0', choices = ['0', '1'])
+	parser.add_argument('-a', '--avg', required=False, help="The averaging method", default="mean", choices = ["mean", "log", "harmonic"])
 
 
 	args = parser.parse_args()
@@ -391,18 +416,19 @@ def main():
 	inputTree_obj = read_tree_newick(inputTree)
 	__label_tree__(inputTree_obj)
 
-	new_tree, obj, rates, bls = compute_optimal_rates(inputTree_obj, refTrees, r = args.reg_coef)
+	new_tree, obj, rates, bls = compute_optimal_rates(inputTree_obj, refTrees, r = args.reg_coef, w = int(args.weighted), avg = args.avg)
 
-	with open(args.output_file, 'w') as f:
+	with open(args.output_file + ".trees", 'w') as f:
 		f.write(new_tree + '\n')
 
-	with open(args.log_file, 'w') as f:
-		f.write(obj + '\n')
+	if args.log_file:
+		with open(args.log_file, 'w') as f:
+			f.write(obj + '\n')
 
-	with open(args.output_file.replace(".trees", ".rates"), 'w') as f:
+	with open(args.output_file + ".rates", 'w') as f:
 		f.write('\t'.join(rates) + '\n')
 
-	with open(args.output_file.replace(".trees", ".branches"), 'w') as f:
+	with open(args.output_file + ".branches", 'w') as f:
 		f.write('\t'.join(bls) + '\n')
 
 
