@@ -367,34 +367,35 @@ def main():
 	all_bls = []
 	for i in range(len(refTrees)):
 		start1 = time.time()
-		# print(i)
-		# print("="*200)
 		inputTree_obj = read_tree_newick(refTrees[i])
 		__label_tree__(inputTree_obj)
 		gene_trees = refTrees[:i] + refTrees[i+1:]
 		new_tree, obj, rates, bls = compute_optimal_rates(inputTree_obj, gene_trees, r = args.reg_coef)
 		end = time.time()
-		# print("Runtime: ", end - start1) 
 		all_new_trees.append(new_tree)
 		all_rates.append(rates)
 		all_bls.append(bls)
 
 	with open(args.output_file + ".trees", 'w') as f:
-		f.write(new_tree + '\n')
+		for nt in all_new_trees:
+			f.write(nt + '\n')
 
 	if args.log_file:
 		with open(args.log_file, 'w') as f:
 			f.write(obj + '\n')
 
 	with open(args.output_file + ".rates", 'w') as f:
-		f.write('\t'.join(rates) + '\n')
+		for r in all_rates:
+			f.write('\t'.join(r) + '\n')
 
 	with open(args.output_file + ".branches", 'w') as f:
-		f.write('\t'.join(bls) + '\n')
+		for b in all_bls:
+			f.write('\t'.join(b) + '\n')
 
 
 	end = time.time()
-	print("Runtime: ", end - start)
+	print("Runtime: ", end - start) 
+
 
 if __name__ == "__main__":
 	main()  
