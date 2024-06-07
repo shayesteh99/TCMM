@@ -285,6 +285,7 @@ def compute_optimal_rates(tree, refTrees, r = 1, w = 0, avg = "mean"):
 	n = len(w)
 	# x is the optimal weight parameter (not the scale)
 	x = cp.Variable(n)
+	mean_diag = np.mean(np.diagonal(AtA))
 
 	#objective \sum_{gt} {\| A_{st} x - d_{gt} \|_2^2} = \sum_{gt} {x^T A_{st}^T A_{st} x - 2 (A_{st}^{T} d_{gt})^T x} = 
 	# n * x^T A_{st}^T A_{st} x - 2 (A_{st}^{T} \sum_{gt} {d_{gt}})^T x = 
@@ -307,9 +308,10 @@ def compute_optimal_rates(tree, refTrees, r = 1, w = 0, avg = "mean"):
 	# r = 1
 	# threshold for edge weights
 	threshold = 0
-
-	prob = cp.Problem(cp.Minimize(objective / n**2 + r * regularization),[x >= threshold])
-	prob.solve()
+	prob = cp.Problem(cp.Minimize(objective / mean_diag + r * regularization),[x >= threshold])
+	if r == 0:
+		prob = cp.Problem(cp.Minimize(objective / mean_diag),[x >= threshold])
+	prob.solve(verbose = True)
 
 	# Print result.
 	# print("\nThe optimal value is", prob.value)
@@ -416,7 +418,7 @@ def main():
 	inputTree_obj = read_tree_newick(inputTree)
 	__label_tree__(inputTree_obj)
 
-	new_tree, obj, rates, bls = compute_optimal_rates(inputTree_obj, refTrees, r = args.reg_coef, w = int(args.weighted), avg = args.avg)
+	new_tree, obj, rates, bls = compute_optimal_rates(inputTree_obj, refTrees, r = float(args.reg_coef), w = int(args.weighted), avg = args.avg)
 
 	with open(args.output_file + ".trees", 'w') as f:
 		f.write(new_tree + '\n')

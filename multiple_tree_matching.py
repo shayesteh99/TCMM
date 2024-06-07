@@ -4,7 +4,7 @@ import sys
 import os
 import argparse
 import time
-from math import exp, log
+from math import exp, log, fabs
 import random
 from treeswift import *
 import treeswift
@@ -81,20 +81,21 @@ def compute_A_transpose_A(tree):
 	num_leaves = leaf_num_dict[tree.root.label]
 	for n in tree.traverse_preorder():
 		for m in tree.traverse_preorder():
-			if (m.label, n.label) not in AtA:
-				if m == n:
-					AtA[(n.label, m.label)] = leaf_num_dict[m.label] * (num_leaves - leaf_num_dict[n.label])
-				else:
-					if (n.label, m.label) in lca_dict:
-						lca = lca_dict[(n.label, m.label)]
-					else:
-						lca = lca_dict[(m.label, n.label)]
-					if lca != n.label and lca != m.label:
-						AtA[(n.label, m.label)] = leaf_num_dict[n.label] * leaf_num_dict[m.label]
-					elif lca == n.label:
+			if not n.is_root() and not m.is_root():
+				if (m.label, n.label) not in AtA:
+					if m == n:
 						AtA[(n.label, m.label)] = leaf_num_dict[m.label] * (num_leaves - leaf_num_dict[n.label])
 					else:
-						AtA[(n.label, m.label)] = leaf_num_dict[n.label] * (num_leaves - leaf_num_dict[m.label])
+						if (n.label, m.label) in lca_dict:
+							lca = lca_dict[(n.label, m.label)]
+						else:
+							lca = lca_dict[(m.label, n.label)]
+						if lca != n.label and lca != m.label:
+							AtA[(n.label, m.label)] = leaf_num_dict[n.label] * leaf_num_dict[m.label]
+						elif lca == n.label:
+							AtA[(n.label, m.label)] = leaf_num_dict[m.label] * (num_leaves - leaf_num_dict[n.label])
+						else:
+							AtA[(n.label, m.label)] = leaf_num_dict[n.label] * (num_leaves - leaf_num_dict[m.label])
 	return AtA
 
 def compute_A_transpose_d(tree, refTree):
@@ -133,7 +134,8 @@ def compute_A_transpose_d(tree, refTree):
 					bl_sum[1] += node.edge_length * count[1]
 					leaf_count[node.label] = count
 					length_sum[node.label] = bl_sum
-		Atd[n.label] = total_sum
+		if not n.is_root():
+			Atd[n.label] = total_sum
 	return Atd
 
 def compute_A_transpose_d_naive(tree, refTree):
@@ -159,9 +161,10 @@ def get_edge_indices(tree):
 	if len(root.child_nodes()) == 2:
 		index_to_edge.remove(root.child_nodes()[1].label)
 	edge_to_index = {index_to_edge[i]:i for i in range(len(index_to_edge))}
+
 	return edge_to_index, index_to_edge
 	
-def get_matrices(tree, refTree):
+def get_matrices(tree, refTree, output_file):
 	edge_to_index, index_to_edge = get_edge_indices(tree)
 	n_edges = len(edge_to_index)
 	edge_lengths = {n.label:n.edge_length for n in tree.traverse_preorder()}
@@ -172,9 +175,14 @@ def get_matrices(tree, refTree):
 		sum_lengths = edge_lengths[child1.label] + edge_lengths[child2.label]
 		edge_lengths[child1.label] = sum_lengths
 		del edge_lengths[child2.label]
+	# print(edge_lengths)
+
 
 	Atd = compute_A_transpose_d(tree, refTree)
 	AtA = compute_A_transpose_A(tree)
+	# with open(output_file + ".ata", "w") as f: 
+	# 	for k in AtA:
+	# 		f.write(str(k) + "\t" + str(AtA[k]) + "\n")
 	Atd_mat = np.zeros(n_edges)
 	edge_mat = np.zeros(n_edges)
 	AtA_mat = np.zeros((n_edges, n_edges))
@@ -193,13 +201,15 @@ def get_matrices(tree, refTree):
 
 	return Atd_mat, AtA_mat, edge_mat, edge_to_index, index_to_edge
 
-def compute_optimal_rates(tree, refTree, r = 1):
-	Atd, AtA, w, edge_to_index, index_to_edge = get_matrices(tree, refTree)
+def compute_optimal_rates(tree, refTree, output_file, r = 1):
+	Atd, AtA, w, edge_to_index, index_to_edge = get_matrices(tree, refTree, output_file)
+	mean_diag = np.mean(np.diagonal(AtA))
+	# sum_diag = np.mean(np.diagonal(AtA))
 	# let n be the number of edges
 	n = len(w) # 
+	# print(n**2, sum_diag)
 	# x is the optimal weight parameter (not the scale)
 	x = cp.Variable(n)
-	mean_w = sum(w) / n
 
 	#objective \sum_{gt} {\| A_{st} x - d_{gt} \|_2^2} = \sum_{gt} {x^T A_{st}^T A_{st} x - 2 (A_{st}^{T} d_{gt})^T x} = 
 	# n * x^T A_{st}^T A_{st} x - 2 (A_{st}^{T} \sum_{gt} {d_{gt}})^T x = 
@@ -208,7 +218,7 @@ def compute_optimal_rates(tree, refTree, r = 1):
 	# AA = AA.T @ AA # replace it with your A_{gt}^T A_{gt}
 	# d = np.random.randn(n)
 	# Ad = AA.T @ d# replace it with your A_{gt}^T d_{st}
-	objective  = (cp.quad_form(x, AtA) - 2 * Atd.T @ x) / mean_w
+	objective  = (cp.quad_form(x, AtA) - 2 * Atd.T @ x)
 
 
 	#w_{gt} is the gene tree edges
@@ -217,17 +227,21 @@ def compute_optimal_rates(tree, refTree, r = 1):
 	# regularization = cp.norm(x- w)**2 
 	# rates = x / w
 	w_mask = w > 1e-8
-	regularization = 1e+8 * cp.sum_squares((x[w_mask])/ (w[w_mask] * 1e+4) - cp.sum((x[w_mask])/(w[w_mask] * 1e+4)) / np.sum(w_mask)) / np.sum(w_mask)
+
+	regularization = 1e+8 * cp.sum_squares((x[w_mask]/ (w[w_mask] * 1e+4)) - (cp.sum(x[w_mask]/(w[w_mask] * 1e+4)) / np.sum(w_mask))) / np.sum(w_mask)
+	# regularization = 0
 	# regularization factor
 	# r = 1
 	# threshold for edge weights
 	threshold = 0
-
-	prob = cp.Problem(cp.Minimize(objective / n**2 + r * regularization),[x >= threshold])
-	prob.solve()
+	# print(fabs(r))
+	prob = cp.Problem(cp.Minimize(objective / mean_diag + r * regularization),[x >= threshold])
+	if r == 0:
+		prob = cp.Problem(cp.Minimize(objective / mean_diag),[x >= threshold])
+	prob.solve(verbose = True)
 
 	# Print result.
-	# print("\nThe optimal value is", prob.value)
+	# print("The optimal value is", prob.value)
 	# print(objective.value)
 	# print(regularization.value)
 	# print("A solution x is")
@@ -283,7 +297,15 @@ def compute_optimal_rates(tree, refTree, r = 1):
 
 	rates = []
 	bls = []
+
+	# for n in edge_to_index:
+	# 	print(n, x.value[edge_to_index[n]])
+
 	for n in new_tree.traverse_postorder():
+		# print(n.label)
+		# if n.label in edge_to_index:
+		# 	print(x.value[edge_to_index[n.label]])
+		# print("="*10)
 		if n.is_root():
 			continue
 		dupl = False
@@ -301,7 +323,7 @@ def compute_optimal_rates(tree, refTree, r = 1):
 			rate = n.edge_length / old_edge
 			rates.append(str(rate))
 			bls.append(str(new_length))
-	# print(bls)
+	print(new_tree.newick())
 
 	return new_tree.newick(), str(objective.value), rates, bls
 
@@ -334,13 +356,17 @@ def main():
 	all_bls = []
 
 	for i in range(len(refTrees)):
+		print(i+1)
+		print(refTrees[i])
+		print("="*200)
 		num = str(i+1)
 		r = refTrees[i]
 		inputTree_obj = read_tree_newick(inputTree)
 		refTree_obj = read_tree_newick(r)
 		__label_tree__(inputTree_obj)
 		__label_tree__(refTree_obj)
-		new_tree, obj, rates, bls = compute_optimal_rates(inputTree_obj, refTree_obj, r = args.reg_coef)
+		# print(refTree_obj.newick())
+		new_tree, obj, rates, bls = compute_optimal_rates(inputTree_obj, refTree_obj, args.output_file, r = float(args.reg_coef))
 		new_trees.append(new_tree)
 		losses.append([num,obj])
 		all_rates.append([num] + rates)

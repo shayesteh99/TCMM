@@ -298,7 +298,9 @@ def compute_optimal_rates(tree, refTrees, r = 1):
 	threshold = 0
 
 	prob = cp.Problem(cp.Minimize(objective / mean_diag + r * regularization),[x >= threshold])
-	prob.solve()
+	if r == 0:
+		prob = cp.Problem(cp.Minimize(objective / mean_diag),[x >= threshold])
+	prob.solve(verbose = False)
 
 	# Print result.
 	# print("\nThe optimal value is", prob.value)
@@ -356,21 +358,26 @@ def main():
 
 	start = time.time()
 
+	os.system("nw_reroot " + args.ref + " > " + args.ref + ".rerooted")
+
 	# with open(args.input,'r') as f:
 	# 	inputTree = f.read().strip().split("\n")[0]
 
-	with open(args.ref,'r') as f:
+	with open(args.ref+".rerooted",'r') as f:
 		refTrees = f.read().strip().split("\n")
 
 	all_new_trees = []
 	all_rates = []
 	all_bls = []
 	for i in range(len(refTrees)):
+		print(i+1)
+		print(refTrees[i])
+		print("="*200)
 		start1 = time.time()
 		inputTree_obj = read_tree_newick(refTrees[i])
 		__label_tree__(inputTree_obj)
 		gene_trees = refTrees[:i] + refTrees[i+1:]
-		new_tree, obj, rates, bls = compute_optimal_rates(inputTree_obj, gene_trees, r = args.reg_coef)
+		new_tree, obj, rates, bls = compute_optimal_rates(inputTree_obj, gene_trees, r = float(args.reg_coef))
 		end = time.time()
 		all_new_trees.append(new_tree)
 		all_rates.append(rates)
@@ -391,7 +398,6 @@ def main():
 	with open(args.output_file + ".branches", 'w') as f:
 		for b in all_bls:
 			f.write('\t'.join(b) + '\n')
-
 
 	end = time.time()
 	print("Runtime: ", end - start) 
